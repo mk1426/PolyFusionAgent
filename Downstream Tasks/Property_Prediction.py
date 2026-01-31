@@ -19,7 +19,7 @@ import csv
 import copy
 from typing import List, Dict, Optional, Tuple, Any
 
-# Increase CSV field size limit (PolyInfo modality JSON fields can be large).
+# Increase CSV field size limit 
 csv.field_size_limit(sys.maxsize)
 
 # =============================================================================
@@ -36,7 +36,7 @@ from PolyFusion.DeBERTav2 import PSMILESDebertaEncoder, build_psmiles_tokenizer
 BASE_DIR = "/path/to/Polymer_Foundational_Model"
 POLYINFO_PATH = "/path/to/polyinfo_with_modalities.csv"
 
-# Pretrained encoder directories (update these placeholders)
+# Pretrained encoder directories
 PRETRAINED_MULTIMODAL_DIR = "/path/to/multimodal_output/best"
 BEST_GINE_DIR = "/path/to/gin_output/best"
 BEST_SCHNET_DIR = "/path/to/schnet_output/best"
@@ -50,7 +50,7 @@ OUTPUT_RESULTS = "/path/to/multimodal_downstream_results.txt"
 BEST_WEIGHTS_DIR = "/path/to/multimodal_downstream_bestweights"
 
 # -----------------------------------------------------------------------------
-# Model sizes / dims (must match your pretrained multimodal encoder settings)
+# Model sizes / dims 
 # -----------------------------------------------------------------------------
 MAX_ATOMIC_Z = 85
 MASK_ATOM_ID = MAX_ATOMIC_Z + 1
@@ -80,12 +80,12 @@ DEBERTA_HIDDEN = 600
 PSMILES_MAX_LEN = 128
 
 # -----------------------------------------------------------------------------
-# Uni-Poly style fusion + regression head hyperparameters
+# Fusion + regression head hyperparameters
 # -----------------------------------------------------------------------------
 POLYF_EMB_DIM = 600
 POLYF_ATTN_HEADS = 8
 POLYF_DROPOUT = 0.1
-POLYF_FF_MULT = 4  # FFN hidden = 4*d (common transformer practice)
+POLYF_FF_MULT = 4  # FFN hidden = 4*d 
 
 # -----------------------------------------------------------------------------
 # Fine-tuning parameters (single-task per property)
@@ -99,7 +99,7 @@ WEIGHT_DECAY = 0.0
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Properties to evaluate (order preserved)
+# Properties to evaluate
 REQUESTED_PROPERTIES = [
     "density",
     "glass transition",
@@ -192,7 +192,6 @@ def summarize_state_dict_load(full_state: dict, model_state: dict, filtered_stat
         for k in shape_mismatch[:10]:
             print(f"    {k}: ckpt={tuple(full_state[k].shape)} model={tuple(model_state[k].shape)}")
     print("")
-
 
 def find_property_columns(columns):
     """
@@ -878,7 +877,7 @@ class PolymerPropertyDataset(Dataset):
                 psmiles_data = None
 
         # ---------------------------------------------------------------------
-        # Fill defaults for missing modalities (keeps collate simpler)
+        # Fill defaults for missing modalities
         # ---------------------------------------------------------------------
         if gine_data is None:
             gine_data = {
@@ -1062,7 +1061,7 @@ def multimodal_collate_fn(batch):
 
 
 # =============================================================================
-# Single-task regressor head (Uni-Poly-style fine-tuning)
+# Single-task regressor head 
 # =============================================================================
 class PolyFPropertyRegressor(nn.Module):
     """
@@ -1283,7 +1282,7 @@ def load_pretrained_multimodal(pretrained_path: str) -> MultimodalContrastiveMod
     )
 
     # -------------------------
-    # Optional: load full multimodal checkpoint (projects/fusion, etc.)
+    # Optional: load full multimodal checkpoint
     # -------------------------
     ckpt_path = os.path.join(pretrained_path, "pytorch_model.bin")
     if os.path.isfile(ckpt_path):
@@ -1358,7 +1357,7 @@ def build_samples_for_property(df: pd.DataFrame, prop_col: str) -> List[dict]:
 def run_polyf_downstream(property_list: List[str], property_cols: List[str], df_raw: pd.DataFrame,
                            pretrained_path: str, output_file: str):
     """
-    Uni-Poly-matched downstream evaluation:
+    Downstream evaluation:
 
       For each property:
         - Build samples from PolyInfo
@@ -1380,7 +1379,6 @@ def run_polyf_downstream(property_list: List[str], property_cols: List[str], df_
     all_results = {"per_property": {}, "mode": "POLYF_MATCHED_SINGLE_TASK"}
 
     for pname, pcol in zip(property_list, property_cols):
-        print(f"\n=== [DOWNSTREAM] Uni-Poly matched fine-tuning: {pname} (col='{pcol}') ===")
         samples = build_samples_for_property(df_proc, pcol)
 
         print(f"[DATA] {pname}: n_samples={len(samples)}")

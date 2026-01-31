@@ -768,7 +768,7 @@ def train_and_evaluate(args: argparse.Namespace) -> None:
         except Exception as e:
             print(f"\nFailed to load best model from {best_model_path}: {e}")
 
-    # Final evaluation block preserved (same as original intent, using val_loader)
+    # Final evaluation
     model.eval()
     preds_z_all, true_z_all = [], []
     pred_dists_all, true_dists_all = [], []

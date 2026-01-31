@@ -335,7 +335,7 @@ def prepare_or_load_data_streaming(
                 s = row.get("psmiles", "")
                 psmiles_raw = "" if s is None else str(s)
 
-            # Require at least 2 modalities to keep sample (same logic as your original)
+            # Require at least 2 modalities to keep sample 
             modalities_present = sum(
                 [1 if x is not None else 0 for x in [gine_sample, schnet_sample, fp_sample, psmiles_raw]]
             )
@@ -1328,7 +1328,7 @@ class VerboseTrainingCallback(TrainerCallback):
 class CLTrainer(Trainer):
     """
     Custom Trainer:
-    - evaluate(): merges HF eval with contrastive evaluator (same behavior)
+    - evaluate(): merges HF eval with contrastive evaluator
     - _save(): saves a state_dict under pytorch_model.bin
     - _load_best_model(): loads best pytorch_model.bin
     """
@@ -1544,7 +1544,7 @@ def main():
 
     tokenizer_local = build_psmiles_tokenizer(spm_path=SPM_MODEL, max_len=PSMILES_MAX_LEN)
 
-    global train_loader, val_loader, multimodal_model, device, tokenizer  # kept for callback references (same behavior)
+    global train_loader, val_loader, multimodal_model, device, tokenizer 
     tokenizer = tokenizer_local
     device = device_local
 

@@ -65,7 +65,7 @@ TARGET_EPMC = 200
 TARGET_DATABASES = 100
 
 # --------------------------------------------------------------------------------------
-# Polymer keywords (expandable)
+# Polymer keywords
 # --------------------------------------------------------------------------------------
 POLYMER_KEYWORDS = [
     "polymer",
@@ -812,7 +812,7 @@ def fetch_polymer_journal_pdfs(
 
 
 # --------------------------------------------------------------------------------------
-# WRAPPER FOR OPENAI EMBEDDINGS (POLYMER STYLE)
+# WRAPPER FOR OPENAI EMBEDDINGS
 # --------------------------------------------------------------------------------------
 class PolymerStyleOpenAIEmbeddings(OpenAIEmbeddings):
     """
@@ -950,9 +950,6 @@ def _split_and_build_retriever(
     print(f"→ Using OpenAI embeddings model: {embedding_model}")
     embeddings = PolymerStyleOpenAIEmbeddings(model=embedding_model, api_key=api_key)
 
-    # --------------------------------------------------------------------------------------
-    # CRITICAL FIX: Delete existing DB if it exists to prevent dimension mismatch
-    # --------------------------------------------------------------------------------------
     if vector_backend.lower() == "chroma":
         if persist_dir and os.path.exists(persist_dir):
             print(f"→ Deleting existing Chroma database at {persist_dir} to prevent dimension mismatch...")
@@ -993,8 +990,6 @@ def _split_and_build_retriever(
                 vector_store.add_documents(batch)
 
             time.sleep(0.5)  # Small delay to avoid rate limiting
-
-        print("→ All batches embedded and persisted!")
 
     elif vector_backend.lower() == "faiss":
         try:

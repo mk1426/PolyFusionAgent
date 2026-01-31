@@ -390,7 +390,7 @@ def run_training(csv_file: str, nrows: int, train_txt: str, spm_prefix: str, tok
 
     tokenizer = build_tokenizer(spm_model_path)
 
-    # Tokenize and save dataset (always matching your original behavior)
+    # Tokenize and save dataset
     tokenize_and_save_dataset(train_psmiles, val_psmiles, tokenizer, tokenized_dir)
 
     dataset_train, dataset_test = load_tokenized_dataset(tokenized_dir)

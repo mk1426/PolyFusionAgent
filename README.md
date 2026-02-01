@@ -57,7 +57,7 @@ PolyAgent closes the design loop by coupling prediction and inverse design to ev
 
 ## 1. Repository Overview
 
-PolyFusionAgent has three tightly coupled layers:  
+### PolyFusionAgent has three tightly coupled layers:  
 **(i) PolyFusion** learns a transferable multimodal embedding space; **(ii) task heads** perform property prediction and property-conditioned generation using that embedding; and **(iii) PolyAgent** orchestrates tools (prediction, generation, retrieval, visualization) to produce grounded, audit-ready design outputs.
 ---
 
@@ -80,7 +80,7 @@ These scripts adapt PolyFusion embeddings for two core tasks:
 
 - **Property prediction (structure → properties)**  
   `Downstream Tasks/Property_Prediction.py`  
-  Trains lightweight regression heads on top of (typically frozen) PolyFusion embeddings for thermophysical properties (e.g., ρ, Tg, Tm, Td). 
+  Trains lightweight regression heads on top of (typically frozen) PolyFusion embeddings for thermophysical properties (e.g., density (ρ), glass transition temperature (Tg), melting temperature (Tm), and thermal decomposition temperature (Td)). 
 
 - **Inverse design / generation (target properties → candidate polymers)**  
   `Downstream Tasks/Polymer_Generation.py`  

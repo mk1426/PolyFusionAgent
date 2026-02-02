@@ -425,9 +425,3 @@ If you use this repository in your work, please cite the accompanying manuscript
   note    = {Manuscript / preprint}
 }
 ```
-
-PI1M (JCIM): https://pubs.acs.org/doi/10.1021/acs.jcim.0c00726
-
-polyOne (Zenodo): https://zenodo.org/records/7766806
-
-PoLyInfo (NIMS): https://polymer.nims.go.jp/en/

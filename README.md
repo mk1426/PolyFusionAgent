@@ -117,8 +117,6 @@ This repo is designed to work with large-scale pretraining corpora (for PolyFusi
   Main site: https://polymer.nims.go.jp/en/  
   Overview/help: https://polymer.nims.go.jp/PoLyInfo/guide/en/what_is_polyinfo.html
 
-**Tip:** For reproducibility, document export queries, filtering rules, property units/conditions, and train/val/test splits in `data/README.md`.
-
 ---
 
 ## 2. Dependencies & Environment

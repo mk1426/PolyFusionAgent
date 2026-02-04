@@ -28,10 +28,10 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 # Shared model utilities 
-from GINE import GineEncoder, match_edge_attr_to_index, safe_get
-from SchNet import NodeSchNetWrapper
-from Transformer import PooledFingerprintEncoder as FingerprintEncoder
-from DeBERTav2 import PSMILESDebertaEncoder, build_psmiles_tokenizer
+from PolyFusion.GINE import GineEncoder, GineBlock, MaskedGINE, match_edge_attr_to_index, safe_get
+from PolyFusion.SchNet import NodeSchNetWrapper
+from PolyFusion.Transformer import PooledFingerprintEncoder as FingerprintEncoder
+from PolyFusion.DeBERTav2 import PSMILESDebertaEncoder, build_psmiles_tokenizer
 
 # HF Trainer & Transformers
 from transformers import TrainingArguments, Trainer
@@ -125,7 +125,6 @@ def prepare_or_load_data_streaming(
 ) -> List[str]:
     """
     Prepare per-sample serialized files (torch .pt) for lazy loading.
-
     - If `preproc_dir` already contains `sample_*.pt`, reuse them.
     - Else stream the CSV in chunks and write `sample_{idx:08d}.pt` files.
     """
@@ -335,7 +334,7 @@ def prepare_or_load_data_streaming(
                 s = row.get("psmiles", "")
                 psmiles_raw = "" if s is None else str(s)
 
-            # Require at least 2 modalities to keep sample 
+            # Require at least 2 modalities 
             modalities_present = sum(
                 [1 if x is not None else 0 for x in [gine_sample, schnet_sample, fp_sample, psmiles_raw]]
             )
@@ -352,7 +351,7 @@ def prepare_or_load_data_streaming(
                     torch.save(sample, sample_path)
                 except Exception as save_e:
                     print("Warning: failed to torch.save sample:", save_e)
-                    # fallback JSON for debugging (kept from your original)
+                    # fallback JSON for debugging
                     try:
                         with open(sample_path + ".json", "w") as fjson:
                             json.dump(sample, fjson)
@@ -376,7 +375,6 @@ def prepare_or_load_data_streaming(
 class LazyMultimodalDataset(Dataset):
     """
     Lazily loads per-sample files from disk and converts them into tensors.
-
     Each sample file is expected to contain:
       - gine: dict or None
       - schnet: dict or None
@@ -396,7 +394,7 @@ class LazyMultimodalDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Dict[str, torch.Tensor]]:
         sample_path = self.files[idx]
 
-        # prefer torch.load if .pt, else try json (kept behavior)
+        # prefer torch.load if .pt, else try json
         if sample_path.endswith(".pt"):
             sample = torch.load(sample_path, map_location="cpu")
         else:
@@ -485,7 +483,6 @@ class LazyMultimodalDataset(Dataset):
 def multimodal_collate(batch_list: List[Dict[str, Dict[str, torch.Tensor]]]) -> Dict[str, Dict[str, torch.Tensor]]:
     """
     Collate a list of LazyMultimodalDataset samples into a single multimodal batch.
-
     Output keys:
       - gine: {z, chirality, formal_charge, edge_index, edge_attr, batch}
       - schnet: {z, pos, batch}
@@ -512,7 +509,6 @@ def multimodal_collate(batch_list: List[Dict[str, Dict[str, torch.Tensor]]]) -> 
             ei_offset = g["edge_index"] + node_offset
             all_edge_index.append(ei_offset)
 
-            # REUSED helper from GINE.py
             ea = match_edge_attr_to_index(g["edge_index"], g["edge_attr"], target_dim=3)
             all_edge_attr.append(ea)
 
@@ -685,7 +681,7 @@ class MultimodalContrastiveModel(nn.Module):
 
     def forward(self, batch_mods: Dict[str, torch.Tensor], mask_target: str):
         """
-        Compute total loss = InfoNCE + REC_LOSS_WEIGHT * reconstruction_loss (if any labels exist).
+        Compute total loss = InfoNCE + REC_LOSS_WEIGHT * reconstruction_loss
         """
         device = next(self.parameters()).device
         embs = self.encode(batch_mods)
@@ -949,7 +945,6 @@ def mask_batch_for_modality(batch: dict, modality: str, tokenizer, p_mask: float
 def mm_batch_to_model_input(masked_batch: dict) -> dict:
     """
     Normalize the masked batch dict into the exact structure expected by MultimodalContrastiveModel.
-    (Kept identical semantics.)
     """
     mm = {}
     if "gine" in masked_batch:
@@ -1027,7 +1022,7 @@ def evaluate_multimodal(model: MultimodalContrastiveModel, val_loader: DataLoade
             acc = (preds == labels).float().mean().item()
             acc_sum += acc * B
 
-            # Weighted F1 over instance IDs (kept as in your prior logic)
+            # Weighted F1 over instance IDs
             try:
                 labels_np = labels.cpu().numpy()
                 preds_np = preds.cpu().numpy()
@@ -1158,8 +1153,6 @@ class ContrastiveDataCollator:
 class VerboseTrainingCallback(TrainerCallback):
     """
     Console-first training callback with early stopping on eval_loss.
-
-    Behavior is kept consistent with your original callback; changes are comment/structure only.
     """
 
     def __init__(self, patience: int = 10):
@@ -1578,7 +1571,7 @@ def main():
     trainer.get_train_dataloader = lambda dataset=None: train_loader
     trainer.get_eval_dataloader = lambda eval_dataset=None: val_loader
 
-    # Optimizer (kept as in original script)
+    # Optimizer
     _optimizer = torch.optim.AdamW(multimodal_model.parameters(), lr=training_args.learning_rate, weight_decay=training_args.weight_decay)
 
     total_params = sum(p.numel() for p in multimodal_model.parameters())
@@ -1597,12 +1590,12 @@ def main():
         except Exception:
             pass
 
-    # ---- train ----
+    # ---- Train ----
     training_start_time = time.time()
     trainer.train()
     training_end_time = time.time()
 
-    # ---- save best ----
+    # ---- Save best ----
     best_dir = os.path.join(OUTPUT_DIR, "best")
     os.makedirs(best_dir, exist_ok=True)
 
@@ -1616,7 +1609,7 @@ def main():
     except Exception as e:
         print("Warning: failed to load/save best model from Trainer:", e)
 
-    # ---- final evaluation ----
+    # ---- Final Evaluation ----
     final_metrics = {}
     try:
         if trainer.state.best_model_checkpoint:

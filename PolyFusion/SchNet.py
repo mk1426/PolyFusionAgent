@@ -1,6 +1,9 @@
 """
+SchNet.py
 SchNet-based masked pretraining on polymer conformer geometry.
 """
+
+from __future__ import annotations
 
 import os
 import json
@@ -8,7 +11,7 @@ import time
 import sys
 import csv
 import argparse
-from typing import List
+from typing import List, Optional
 
 # Increase max CSV field size limit
 csv.field_size_limit(sys.maxsize)
@@ -73,7 +76,6 @@ def load_geometry_from_csv(csv_path: str, target_rows: int, chunksize: int):
     rows_read = 0
 
     for chunk in pd.read_csv(csv_path, engine="python", chunksize=chunksize):
-        # parse geometry JSON strings in the chunk
         geoms_chunk = chunk["geometry"].apply(json.loads)
         for geom in geoms_chunk:
             conf = geom["best_conformer"]
@@ -110,6 +112,7 @@ def compute_class_weights(train_z: List[torch.Tensor]) -> torch.Tensor:
 
 class PolymerDataset(Dataset):
     """Pairs of (z, pos) per polymer conformer."""
+
     def __init__(self, zs: List[torch.Tensor], pos_list: List[torch.Tensor]):
         self.zs = zs
         self.pos_list = pos_list
@@ -183,7 +186,7 @@ def collate_batch(batch):
                 randpos = (torch.rand((idx.size(0), 3)) * (maxs - mins)) + mins
                 pos_masked[idx] = randpos
 
-        # Anchor-distance targets for masked atoms (using true positions as reference)
+        # Anchor-distance targets
         visible_idx = torch.nonzero(~is_selected).squeeze(-1)
         if visible_idx.numel() == 0:
             visible_idx = torch.arange(n_atoms, dtype=torch.long)
@@ -226,8 +229,17 @@ def collate_batch(batch):
 
 class NodeSchNet(nn.Module):
     """SchNet variant that returns node embeddings (no readout)."""
-    def __init__(self, hidden_channels=128, num_filters=128, num_interactions=6,
-                 num_gaussians=50, cutoff=10.0, max_num_neighbors=32, readout="add"):
+
+    def __init__(
+        self,
+        hidden_channels=128,
+        num_filters=128,
+        num_interactions=6,
+        num_gaussians=50,
+        cutoff=10.0,
+        max_num_neighbors=32,
+        readout="add",
+    ):
         super().__init__()
         self.hidden_channels = hidden_channels
         self.cutoff = cutoff
@@ -259,15 +271,30 @@ class NodeSchNet(nn.Module):
         return h
 
 
-class MaskedSchNet(nn.Module):
-    """Masked objectives on top of node embeddings from SchNet."""
-    def __init__(self, hidden_channels=600, num_interactions=SCHNET_NUM_INTERACTIONS, num_gaussians=SCHNET_NUM_GAUSSIANS,
-                 cutoff=SCHNET_CUTOFF, max_atomic_z=MAX_ATOMIC_Z, max_num_neighbors=SCHNET_MAX_NEIGHBORS, class_weights=None):
+# =============================================================================
+# Wrapper used by MaskedSchNet
+# =============================================================================
+
+class NodeSchNetWrapper(nn.Module):
+    """
+    - Produces pooled embedding (mean pooling + pool_proj)
+    - Provides node_logits(...) for reconstruction
+    """
+
+    def __init__(
+        self,
+        hidden_channels=600,
+        num_interactions=SCHNET_NUM_INTERACTIONS,
+        num_gaussians=SCHNET_NUM_GAUSSIANS,
+        cutoff=SCHNET_CUTOFF,
+        max_num_neighbors=SCHNET_MAX_NEIGHBORS,
+        emb_dim: int = 600,
+        class_weights: Optional[torch.Tensor] = None,
+    ):
         super().__init__()
         self.hidden_channels = hidden_channels
         self.cutoff = cutoff
         self.max_num_neighbors = max_num_neighbors
-        self.max_atomic_z = max_atomic_z
 
         self.schnet = NodeSchNet(
             hidden_channels=hidden_channels,
@@ -279,6 +306,64 @@ class MaskedSchNet(nn.Module):
         )
 
         self.atom_head = nn.Linear(hidden_channels, MASK_ATOM_ID + 1)
+        self.pool_proj = nn.Linear(hidden_channels, emb_dim)
+
+        if class_weights is not None:
+            self.register_buffer("class_weights", class_weights)
+        else:
+            self.class_weights = None
+
+    def encode_nodes(self, z, pos, batch=None):
+        return self.schnet(z=z, pos=pos, batch=batch)
+
+    def node_logits(self, z, pos, batch=None):
+        h = self.encode_nodes(z, pos, batch=batch)
+        return self.atom_head(h)
+
+    def forward(self, z, pos, batch=None):
+        if batch is None:
+            batch = torch.zeros(z.size(0), dtype=torch.long, device=z.device)
+
+        h = self.encode_nodes(z, pos, batch=batch)
+        if h.size(0) == 0:
+            B = int(batch.max().item() + 1) if batch.numel() > 0 else 0
+            return torch.zeros((B, self.pool_proj.out_features), device=z.device)
+
+        B = int(batch.max().item() + 1) if batch.numel() > 0 else 1
+        pooled = torch.zeros((B, h.size(1)), device=h.device)
+        counts = torch.zeros((B,), device=h.device)
+
+        pooled.index_add_(0, batch, h)
+        counts.index_add_(0, batch, torch.ones((h.size(0),), device=h.device))
+        pooled = pooled / counts.clamp(min=1.0).unsqueeze(-1)
+        return self.pool_proj(pooled)
+
+
+class MaskedSchNet(nn.Module):
+    """Masked objectives on top of node embeddings from SchNet."""
+
+    def __init__(
+        self,
+        hidden_channels=600,
+        num_interactions=SCHNET_NUM_INTERACTIONS,
+        num_gaussians=SCHNET_NUM_GAUSSIANS,
+        cutoff=SCHNET_CUTOFF,
+        max_atomic_z=MAX_ATOMIC_Z,
+        max_num_neighbors=SCHNET_MAX_NEIGHBORS,
+        class_weights=None,
+    ):
+        super().__init__()
+
+        self.wrapper = NodeSchNetWrapper(
+            hidden_channels=hidden_channels,
+            num_interactions=num_interactions,
+            num_gaussians=num_gaussians,
+            cutoff=cutoff,
+            max_num_neighbors=max_num_neighbors,
+            emb_dim=600,
+            class_weights=class_weights,
+        )
+
         self.coord_head = nn.Linear(hidden_channels, K_ANCHORS)
 
         if USE_LEARNED_WEIGHTING:
@@ -288,14 +373,11 @@ class MaskedSchNet(nn.Module):
             self.log_var_z = None
             self.log_var_pos = None
 
-        if class_weights is not None:
-            self.register_buffer("class_weights", class_weights)
-        else:
-            self.class_weights = None
+        self.class_weights = getattr(self.wrapper, "class_weights", None)
 
     def forward(self, z, pos, batch, labels_z=None, labels_dists=None, labels_dists_mask=None):
-        h = self.schnet(z=z, pos=pos, batch=batch)
-        logits = self.atom_head(h)
+        h = self.wrapper.encode_nodes(z=z, pos=pos, batch=batch)
+        logits = self.wrapper.atom_head(h)
         dists_pred = self.coord_head(h)
 
         if labels_z is not None and labels_dists is not None and labels_dists_mask is not None:
@@ -333,6 +415,7 @@ class MaskedSchNet(nn.Module):
 
 class ValLossCallback(TrainerCallback):
     """Evaluation callback: computes metrics on val_loader, saves best, early-stops on val loss."""
+
     def __init__(self, best_model_dir: str, val_loader: DataLoader, patience: int = 10, trainer_ref=None):
         self.best_val_loss = float("inf")
         self.epochs_no_improve = 0
@@ -585,6 +668,7 @@ def train_and_eval(args: argparse.Namespace) -> None:
                 loss_z_final = F.cross_entropy(all_logits_masked_final, all_labels_masked_final)
         else:
             loss_z_final = F.cross_entropy(all_logits_masked_final, all_labels_masked_final)
+
         try:
             perplexity_final = float(torch.exp(loss_z_final).cpu().item())
         except Exception:

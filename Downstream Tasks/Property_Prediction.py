@@ -104,7 +104,6 @@ REQUESTED_PROPERTIES = [
     "density",
     "glass transition",
     "melting",
-    "specific volume",
     "thermal decomposition"
 ]
 

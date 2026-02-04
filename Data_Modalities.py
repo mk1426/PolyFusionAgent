@@ -232,7 +232,7 @@ class AdvancedPolymerMultimodalExtractor:
         }
 
     # ------------------------------
-    # 3D geometry (ETKDG + MMFF/UFF) with fallback 2D coords
+    # 3D geometry (ETKDG + MMFF/UFF) 
     # ------------------------------
     def optimize_3d_geometry(self, smiles: str, num_conformers: int = 10) -> Dict:
         """
@@ -438,7 +438,6 @@ class AdvancedPolymerMultimodalExtractor:
                 json.dump(fail, f)
                 f.write("\n")
 
-    # Optional stubs preserved (no functional change)
     def save_results(self, output_file: str = "polymer_multimodal_data.json"):
         pass
 

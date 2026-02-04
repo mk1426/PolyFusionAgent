@@ -84,41 +84,45 @@ DEFAULT_TARGET_BY_PROPERTY = {
 # Run instructions bubble
 # -----------------------------------------------------------------------------
 RUN_INSTRUCTIONS_MD = (
-    "### How to run PolyAgent (one-time setup)\n"
+    "### How to use PolyAgent\n"
     "\n"
-    "**1) Environment**\n"
-    "- Activate your conda/venv where this repository is installed.\n"
-    "- Install required Python packages (project-specific; example):\n"
-    "  - `pip install gradio torch transformers numpy joblib sentencepiece requests beautifulsoup4`\n"
-    "  - If you want PNG visuals and RDKit validation: install RDKit (recommended via conda-forge).\n"
+    "PolyAgent is a web app with three **Tabs** at the top:\n"
+    "- **PolyAgent Console** (main workflow)\n"
+    "- **Tools** (run individual tools)\n"
+    "- **Other LLMs** (baseline LLM-only answers)\n"
     "\n"
-    "**2) Required model/artifact paths**\n"
-    "- Ensure these paths exist and contain the expected artifacts (as configured in `OrchestratorConfig`):\n"
-    "  - `cl_weights_path` (CL encoder weights)\n"
-    "  - `DOWNSTREAM_BESTWEIGHTS_5M_DIR` (property heads)\n"
-    "  - `INVERSE_DESIGN_5M_DIR` (inverse design generator bundles)\n"
-    "  - `spm_5M.model` (SentencePiece model)\n"
+    "#### PolyAgent Console\n"
+    "Use this Tab for the full, end-to-end run.\n"
+    "1) In **Questions**, paste your request (one question or multiple).\n"
+    "2) Click **Run PolyAgent**.\n"
+    "3) Read the results in:\n"
+    "   - **PolyAgent Answer**: the final structured response.\n"
+    "   - **PNG Artifacts**: any available visuals (molecule render, generation grid, explainability heatmap).\n"
     "\n"
-    "**3) Required environment variables**\n"
-    "- `OPENAI_API_KEY` (required for planning + composed answers)\n"
-    "- Optional:\n"
-    "  - `OPENAI_MODEL` (defaults to `gpt-4.1` in config)\n"
-    "  - `HF_TOKEN` (recommended for `materials.selfies-ted` model downloads)\n"
-    "  - `SPRINGER_NATURE_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY` (improves web_search coverage)\n"
+    "**Prompt tips (what PolyAgent detects automatically):**\n"
+    "- **Inverse design / generation**: include words like `generate` or `inverse design` **and** include a numeric target\n"
+    "  (examples: `target_value=60`, `target: 60`, `Tg 60`).\n"
+    "- **Seed polymer**: provide a pSMILES either:\n"
+    "  - inside a fenced code block, or\n"
+    "  - with a keyed prefix like `seed_psmiles:`.\n"
+    "- **Citations**: if you want a specific count, say it explicitly (example: `cite 10 papers`).\n"
     "\n"
-    "**4) Start the interface**\n"
-    "- Run:\n"
-    "  - `python gradio_interface.py --server-name 0.0.0.0 --server-port 7860`\n"
+    "#### Tools (debugging / run one step at a time)\n"
+    "Use this Tab when you want to run a single tool and inspect its raw output.\n"
+    "Each section is a collapsible **Accordion** with its own inputs and a run button:\n"
+    "- **Data Extraction** (parse/canonicalize pSMILES; may also produce PNGs)\n"
+    "- **Property Prediction**\n"
+    "- **Polymer Generation (inverse design)**\n"
+    "- **Web / RAG** (search + retrieval)\n"
+    "- **Explainability**\n"
+    "- **Diagnostics** (health checks, e.g., OpenAI probe)\n"
     "\n"
-    "**5) How to prompt in the Console**\n"
-    "- To trigger inverse design: include a generation intent (e.g., “generate”, “inverse design”) and a target value.\n"
-    "- You can specify `target_value` in text (examples): `target_value=60`, `target: 60`, `Tg 60`.\n"
-    "- To seed with a polymer, include a pSMILES in a code block or via `seed_psmiles:`.\n"
-    "- To control citation count: ask explicitly (e.g., “cite 10 papers”).\n"
+    "Outputs appear as JSON (for tool results) and/or PNGs (for visuals), depending on the tool.\n"
     "\n"
-    "**Notes**\n"
-    "- Tool facts are cited as `[T]`.\n"
-    "- Literature/web/RAG citations appear inline as clickable DOI links (e.g., `[https://doi.org/...](https://doi.org/...)`) next to the claim.\n"
+    "#### Other LLMs (no tools)\n"
+    "Use this Tab to get a direct answer from a selected non-GPT model.\n"
+    "It does **not** run PolyAgent tools (no property prediction, no generation tools, no retrieval).\n"
+    "Pick a model, paste your prompt, and run it.\n"
 )
 
 def pretty_json(x: Any) -> str:
@@ -431,7 +435,6 @@ def _attach_source_domains(obj: Any) -> Any:
 def _index_citable_sources(report: Dict[str, Any]) -> Dict[str, Any]:
     """
     Build a compact citation index for web_search + rag retrieval items.
-
     Requirement:
       - Tag format is STRICTLY: COMPLETE DOI URL (https://doi.org/...) when DOI exists,
         otherwise the best available http(s) URL.
@@ -517,7 +520,6 @@ def ensure_orch(state: Dict[str, Any]) -> Tuple[PolymerOrchestrator, Dict[str, A
 def _extract_tool_output(exec_res: Dict[str, Any], tool_name: str) -> Optional[Any]:
     """
     Best-effort extraction of a tool output from execute_plan() results.
-
     Supports a variety of common shapes:
       exec_res["steps"] = [{"tool": "...", "output": {...}}, ...]
       exec_res["steps"] = [{"tool": "...", "result": {...}}, ...]
@@ -647,7 +649,7 @@ def _maybe_add_artifacts(
     imgs: List[str] = []
     extras: Dict[str, Any] = {}
 
-    # Generation grid (unchanged)
+    # Generation grid
     try:
         gen = (report.get("summary", {}) or {}).get("generation", {})
         if isinstance(gen, dict) and gen.get("generated_psmiles"):
@@ -819,7 +821,6 @@ def _collect_citations(report: Dict[str, Any]) -> List[Dict[str, Any]]:
 def _build_sources_section(citations: List[Dict[str, Any]], n_needed: int) -> str:
     """
     Deterministic clickable source list.
-
     Requirement:
       - link text must be the COMPLETE DOI URL (preferred) else URL.
     Bullet format:
@@ -946,7 +947,7 @@ def run_agent(state: Dict[str, Any], questions: str) -> Tuple[str, List[str]]:
 
     target_value: Optional[float] = float(inferred_target) if inferred_target is not None else None
 
-    # Literature query: keep your existing behavior (fallback to default unless questions long enough)
+    # Literature query
     literature_query_default = DEFAULT_LITERATURE_QUERY
     case_brief = DEFAULT_CASE_BRIEF
     property_name = inferred_prop
@@ -1007,7 +1008,7 @@ def run_agent(state: Dict[str, Any], questions: str) -> Tuple[str, List[str]]:
     if not isinstance(report, dict):
         report = {"summary": {"report_generation": {"text": str(report)}}}
 
-    # Attach domains/citations; do NOT normalize generation outputs here
+    # Attach domains/citations
     report = _attach_source_domains(report)
     report = _index_citable_sources(report)
 
@@ -1206,7 +1207,12 @@ def llm_only_answer(state: Dict[str, Any], model_name: str, prompt: str) -> str:
 
     HF_TOKEN = (os.getenv("HF_TOKEN") or "").strip()
     if not HF_TOKEN:
-        return pretty_json({"ok": False, "error": "HF_TOKEN is not set. Add HF_TOKEN=hf_... to your .env or env vars."})
+        return pretty_json(
+            {
+                "ok": False,
+                "error": "HF_TOKEN is not set. Add HF_TOKEN=hf_... to your .env or env vars.",
+            }
+        )
 
     HF_MODEL_MAP = {
         "mixtral-8x22b-instruct": "mistralai/Mixtral-8x22B-Instruct-v0.1",
@@ -1215,6 +1221,7 @@ def llm_only_answer(state: Dict[str, Any], model_name: str, prompt: str) -> str:
 
     m = (model_name or "").strip()
     p = (prompt or "").strip()
+
     if not p:
         return "Please provide a prompt."
     if not m:
@@ -1222,7 +1229,13 @@ def llm_only_answer(state: Dict[str, Any], model_name: str, prompt: str) -> str:
 
     model_id = HF_MODEL_MAP.get(m)
     if not model_id:
-        return pretty_json({"ok": False, "error": f"Unsupported model selection: {m}", "supported": list(HF_MODEL_MAP.keys())})
+        return pretty_json(
+            {
+                "ok": False,
+                "error": f"Unsupported model selection: {m}",
+                "supported": list(HF_MODEL_MAP.keys()),
+            }
+        )
 
     client = InferenceClient(model=model_id, token=HF_TOKEN)
 
@@ -1261,7 +1274,7 @@ def build_ui() -> gr.Blocks:
     ) as demo:
         state = gr.State({})
 
-        gr.Markdown("## PolyAgent\n")
+        gr.Markdown("## PolyAgent 🧪\n")
 
         # Big bubble shown on load and retained (no dismiss / no state gating).
         gr.Markdown(RUN_INSTRUCTIONS_MD, elem_classes=["info-bubble"])
@@ -1387,7 +1400,7 @@ def main():
     args = parser.parse_args()
 
     demo = build_ui()
-    demo.launch(server_name=args.server_name, server_port=args.server_port, show_api=False, share=True)
+    demo.launch(server_name=args.server_name, server_port=args.server_port, share=True)
 
 
 if __name__ == "__main__":

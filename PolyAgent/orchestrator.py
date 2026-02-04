@@ -1,7 +1,6 @@
 """
-PolyAgent Orchestrator (5M)
+PolyAgent Orchestrator
 ===========================
-
 This file provides a modular orchestrator that:
   - extracts polymer multimodal data (graph/geometry/fingerprints/PSMILES)
   - encodes CL embeddings using PolyFusion encoders
@@ -20,16 +19,17 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from urllib.parse import urlparse
+from huggingface_hub import snapshot_download
 
 import numpy as np
 import torch
 import torch.nn as nn
 
-# HF Transformers (for SELFIES-TED decoder as in G2.py)
+# HF Transformers (for SELFIES-TED decoder)
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from transformers.modeling_outputs import BaseModelOutput
 
-# Optional imports for web fetching
+# Imports for web fetching
 try:
     import requests
     from bs4 import BeautifulSoup
@@ -37,7 +37,7 @@ except Exception:
     requests = None
     BeautifulSoup = None
 
-# Optional imports for visuals
+# Imports for visuals
 try:
     from rdkit import Chem
     from rdkit.Chem import Draw
@@ -50,7 +50,7 @@ try:
 except Exception:
     cm = None
 
-# Optional: joblib + sentencepiece for 5M generator artifacts
+# joblib + sentencepiece for 5M generator artifacts
 try:
     import joblib
 except Exception:
@@ -61,7 +61,7 @@ try:
 except Exception:
     spm = None
 
-# Optional: selfies (for SELFIES→SMILES/PSMILES conversion)
+# selfies (for SELFIES→SMILES/PSMILES conversion)
 try:
     import selfies as sf
 except Exception:
@@ -76,24 +76,64 @@ SELFIES_AVAILABLE = sf is not None
 # =============================================================================
 class PathsConfig:
     """
-    Centralized path placeholders. Replace these with your local paths.
+    Centralized paths for Spaces/local runs.
+    On Hugging Face Spaces:
+      - Downloads required artifacts from a HF Model repo (weights) into a local cache dir
+      - Exposes stable local filesystem paths used by the rest of orchestrator.py
     """
-    # CL weights 
-    cl_weights_path = "/path/to/multimodal_output_5M/best/pytorch_model.bin"
 
-    # Chroma DB (local RAG vectorstore persist dir)
-    chroma_db_path = "/path/to/chroma_polymer_db_big"
+    def __init__(self):
+        # 1) HF model repo 
+        self.hf_repo_id = os.getenv("POLYFUSION_WEIGHTS_REPO", "/path/to/polyfusionagent-weights")
+        self.hf_repo_type = os.getenv("POLYFUSION_WEIGHTS_REPO_TYPE", "model")  # usually "model"
 
-    # SentencePiece model + vocab 
-    spm_model_path = "/path/to/spm_5M.model"
-    spm_vocab_path = "/path/to/spm_5M.vocab"
+        # 2) Where to store downloaded files
+        default_root = "/path/to/data/polyfusion_cache" if os.path.isdir("/data") else os.path.expanduser("~/.cache/polyfusion_cache")
+        self.local_weights_root = os.getenv("POLYFUSION_WEIGHTS_DIR", default_root)
 
-    # Downstream bestweights directory produced by your 5M downstream script
-    downstream_bestweights_5m_dir = "/path/to/multimodal_downstream_bestweights_5M"
+        # 3) Optional token (only needed if the weights repo is private)
+        self.hf_token = os.getenv("HF_TOKEN", None)
 
-    # Inverse-design generator artifacts directory produced by your 5M inverse design run
-    inverse_design_5m_dir = "/path/to/multimodal_inverse_design_output_5M_polybart_style/best_models"
+        # 4) Download (cached) + get local folder path.
+        allow = [
+            "/path/to/tokenizer_spm_5m/**",
+            "/path/to/polyfusion_cl_5m/**",
+            "/path/to/downstream_heads_5m/**",
+            "/path/to/inverse_design_5m/**",
+            "/path/to/MANIFEST.txt",
+        ]
 
+        self._weights_dir = snapshot_download(
+            repo_id=self.hf_repo_id,
+            repo_type=self.hf_repo_type,
+            local_dir=self.local_weights_root,
+            local_dir_use_symlinks=False,
+            token=self.hf_token,
+            allow_patterns=allow,
+        )
+
+        # 5) Map to the necessary files 
+        self.cl_weights_path = os.path.join(self._weights_dir, "/path/to/polyfusion_cl_5m", "/path/to/pytorch_model.bin")
+
+        # If your Space also includes a local Chroma DB folder in the Space repo,
+        # keep this as-is. Otherwise, you can also host Chroma DB as a dataset/model repo.
+        self.chroma_db_path = os.getenv("CHROMA_DB_PATH", "/path/to/chroma_polymer_db_big")
+
+        self.spm_model_path = os.path.join(self._weights_dir, "/path/to/tokenizer_spm_5m", "/path/to/spm.model")
+        self.spm_vocab_path = os.path.join(self._weights_dir, "/path/to/tokenizer_spm_5m", "/path/to/spm.vocab")
+
+        self.downstream_bestweights_5m_dir = os.path.join(self._weights_dir, "/path/to/downstream_heads_5m")
+        self.inverse_design_5m_dir = os.path.join(self._weights_dir, "/path/to/inverse_design_5m")
+
+        # 6) Optional: sanity-check required files 
+        self._assert_exists(self.cl_weights_path, "CL weights")
+        self._assert_exists(self.spm_model_path, "SentencePiece model")
+        self._assert_exists(self.spm_vocab_path, "SentencePiece vocab")
+
+    @staticmethod
+    def _assert_exists(p: str, label: str):
+        if not os.path.exists(p):
+            raise FileNotFoundError(f"{label} not found at: {p}")
 
 # =============================================================================
 # DOI NORMALIZATION / RESOLUTION HELPERS
@@ -204,7 +244,6 @@ def _attach_source_domains(obj: Any) -> Any:
 def _index_citable_sources(report: Dict[str, Any]) -> Dict[str, Any]:
     """
     Add 'cite_tag' fields for citable web/RAG items using DOI-first URL tags.
-
     Requirement:
       - Paper citations must use the COMPLETE DOI URL (https://doi.org/...) as the bracket text.
       - If DOI is not available, fall back to the best http(s) URL.
@@ -555,7 +594,7 @@ def _assign_tool_tags_to_report(report: Dict[str, Any]) -> Dict[str, Any]:
 
 def _render_tool_outputs_verbatim_md(report: Dict[str, Any]) -> str:
     """
-    Render tool outputs as verbatim JSON blocks (no content rewriting).
+    Render tool outputs as verbatim JSON blocks.
     """
     if not isinstance(report, dict):
         return ""
@@ -649,19 +688,19 @@ def build_property_registries(paths: PathsConfig):
     invgen = paths.inverse_design_5m_dir
 
     PROPERTY_HEAD_PATHS = {
-        "density": os.path.join(downstream, "density", "best_run_checkpoint.pt"),
-        "glass transition": os.path.join(downstream, "glass_transition", "best_run_checkpoint.pt"),
-        "melting": os.path.join(downstream, "melting", "best_run_checkpoint.pt"),
-        "specific volume": os.path.join(downstream, "specific_volume", "best_run_checkpoint.pt"),
-        "thermal decomposition": os.path.join(downstream, "thermal_decomposition", "best_run_checkpoint.pt"),
+        "density": os.path.join(downstream, "density", "/path/to/best_run_checkpoint.pt"),
+        "glass transition": os.path.join(downstream, "glass_transition", "/path/to/best_run_checkpoint.pt"),
+        "melting": os.path.join(downstream, "melting", "/path/to/best_run_checkpoint.pt"),
+        "specific volume": os.path.join(downstream, "specific_volume", "/path/to/best_run_checkpoint.pt"),
+        "thermal decomposition": os.path.join(downstream, "thermal_decomposition", "/path/to/best_run_checkpoint.pt"),
     }
 
     PROPERTY_HEAD_META = {
-        "density": os.path.join(downstream, "density", "best_run_metadata.json"),
-        "glass transition": os.path.join(downstream, "glass_transition", "best_run_metadata.json"),
-        "melting": os.path.join(downstream, "melting", "best_run_metadata.json"),
-        "specific volume": os.path.join(downstream, "specific_volume", "best_run_metadata.json"),
-        "thermal decomposition": os.path.join(downstream, "thermal_decomposition", "best_run_metadata.json"),
+        "density": os.path.join(downstream, "density", "/path/to/best_run_metadata.json"),
+        "glass transition": os.path.join(downstream, "glass_transition", "/path/to/best_run_metadata.json"),
+        "melting": os.path.join(downstream, "melting", "/path/to/best_run_metadata.json"),
+        "specific volume": os.path.join(downstream, "specific_volume", "/path/to/best_run_metadata.json"),
+        "thermal decomposition": os.path.join(downstream, "thermal_decomposition", "/path/to/best_run_metadata.json"),
     }
 
     GENERATOR_DIRS = {
@@ -1590,7 +1629,7 @@ class PolymerOrchestrator:
     def _ensure_cl_encoder(self):
         if self._cl_encoder is None:
             try:
-                from PolyFusion.GINE import GineEncoder
+                from PolyFusion.GINE import GineEncoder, GineBlock, MaskedGINE, match_edge_attr_to_index, safe_get
                 from PolyFusion.SchNet import NodeSchNetWrapper
                 from PolyFusion.Transformer import PooledFingerprintEncoder as FingerprintEncoder
                 from PolyFusion.DeBERTav2 import PSMILESDebertaEncoder, build_psmiles_tokenizer
@@ -1599,13 +1638,16 @@ class PolymerOrchestrator:
                 raise RuntimeError("Modules not available in python path")
 
             if self._psmiles_tokenizer is None:
-                self._psmiles_tokenizer = build_psmiles_tokenizer()
+                self._psmiles_tokenizer = build_psmiles_tokenizer(
+        spm_path=self.config.spm_model_path,
+        max_len=128,
+            )
             vocab_sz = getattr(self._psmiles_tokenizer, "vocab_size", 270)
 
             gine = GineEncoder().to(self.config.device)
             schnet = NodeSchNetWrapper().to(self.config.device)
             fp = FingerprintEncoder().to(self.config.device)
-            psm = PSMILESDebertaEncoder(model_dir_or_name=None, hidden_fallback=600, vocab_fallback=vocab_sz).to(self.config.device)
+            psm = PSMILESDebertaEncoder(model_dir_or_name=None).to(self.config.device)
             model = MultimodalContrastiveModel(gine, schnet, fp, psm, emb_dim=600).to(self.config.device)
 
             try:
@@ -1709,7 +1751,10 @@ class PolymerOrchestrator:
         if self._psmiles_tokenizer is None:
             try:
                 from PolyFusion.DeBERTav2 import build_psmiles_tokenizer
-                self._psmiles_tokenizer = build_psmiles_tokenizer()
+                self._psmiles_tokenizer = build_psmiles_tokenizer(
+            spm_path=self.config.spm_model_path,
+            max_len=128,
+            )
             except Exception:
                 self._psmiles_tokenizer = None
 
@@ -2939,4 +2984,4 @@ class PolymerOrchestrator:
 if __name__ == "__main__":
     cfg = OrchestratorConfig(paths=PathsConfig())
     orch = PolymerOrchestrator(cfg)
-    print("PolymerOrchestrator ready (5M heads + 5M inverse-design + LLM planner + occlusion explainability).")
+    print("PolymerOrchestrator ready.")

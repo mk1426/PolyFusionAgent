@@ -35,7 +35,7 @@ PolyAgent closes the design loop by coupling prediction and inverse design to ev
 ---
 
 <p align="center">
-  <img src="assets/PP1.png" alt="PolyFusionAgent Overview" width="900" height="900"/>
+  <img src="assets/PP1.png" alt="PolyFusionAgent Overview" width="800" height="900"/>
 </p>
 
 ---

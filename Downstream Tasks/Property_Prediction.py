@@ -249,7 +249,6 @@ def choose_aggregation_key(df: pd.DataFrame) -> Optional[str]:
 def aggregate_polyinfo_duplicates(df: pd.DataFrame, modality_cols: List[str], property_cols: List[str]) -> pd.DataFrame:
     """
     Optional noise reduction: group duplicate polymer entries and average properties.
-
     - Modalities are taken as "first" (they should be consistent per polymer key).
     - Properties are averaged (mean).
     """
@@ -302,20 +301,15 @@ def _sanitize_name(s: str) -> str:
 class MultimodalContrastiveModel(nn.Module):
     """
     Multimodal encoder wrapper:
-
       1) Runs each available modality encoder:
            - GINE (graph)
            - SchNet (3D geometry)
            - Transformer FP encoder (Morgan bit sequence)
            - DeBERTa-based PSMILES encoder (sequence)
-
       2) Projects each modality embedding to a shared dim (emb_dim).
-
       3) Normalizes each modality embedding (L2), drops out, then fuses via
          a masked mean across modalities that are present for each sample.
-
       4) Normalizes the final fused embedding (L2).
-
     Expected downstream usage:
         z = model(batch_mods, modality_mask=modality_mask)  # (B, emb_dim)
     """
@@ -394,7 +388,6 @@ class MultimodalContrastiveModel(nn.Module):
     def _masked_mean_combine(self, zs: List[torch.Tensor], masks: List[torch.Tensor]) -> torch.Tensor:
         """
         Compute sample-wise mean over available modalities.
-
         zs:    list of modality embeddings, each (B,D)
         masks: list of modality presence masks, each (B,) bool
         returns: (B,D)
@@ -535,7 +528,7 @@ class MultimodalContrastiveModel(nn.Module):
         device: str = DEVICE
     ) -> np.ndarray:
         """
-        Convenience: PSMILES-only embeddings (used for fast bulk encoding tasks).
+        PSMILES embeddings
         """
         self.eval()
         if self.psm_tok is None or self.psmiles is None or self.proj_psmiles is None:
@@ -668,7 +661,6 @@ class PolymerPropertyDataset(Dataset):
       - geometry (for SchNet)
       - fingerprints (for FP transformer)
       - psmiles text (for DeBERTa encoder)
-
     Target is a single scalar per sample (already scaled externally).
     """
     def __init__(self, data_list, tokenizer, max_length=128):
@@ -924,7 +916,6 @@ class PolymerPropertyDataset(Dataset):
 def multimodal_collate_fn(batch):
     """
     Collate samples into a single minibatch.
-
     - GINE: concatenate nodes across samples and build a `batch` vector.
     - SchNet: concatenate atoms/coords across samples and build a `batch` vector.
     - FP/PSMILES: stack to (B, L).
@@ -1191,7 +1182,6 @@ def load_pretrained_multimodal(pretrained_path: str) -> MultimodalContrastiveMod
     Construct modality encoders and load any available pretrained weights:
       - modality-specific checkpoints (BEST_*_DIR)
       - full multimodal checkpoint from `pretrained_path/pytorch_model.bin`
-
     Returns a ready-to-fine-tune MultimodalContrastiveModel.
     """
     # -------------------------
@@ -1260,7 +1250,7 @@ def load_pretrained_multimodal(pretrained_path: str) -> MultimodalContrastiveMod
         except Exception as e:
             print(f"[LOAD][WARN] Could not load PSMILES encoder from dir: {e}")
 
-    # Fallback: initialize with vocab fallback (still functional, but not your finetuned weights)
+    # Fallback: initialize with vocab fallback
     if psmiles_encoder is None:
         try:
             psmiles_encoder = PSMILESDebertaEncoder(
@@ -1358,7 +1348,6 @@ def run_polyf_downstream(property_list: List[str], property_cols: List[str], df_
                            pretrained_path: str, output_file: str):
     """
     Downstream evaluation:
-
       For each property:
         - Build samples from PolyInfo
         - 5-fold CV:

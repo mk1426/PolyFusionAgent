@@ -75,7 +75,7 @@ class Config:
     # Multimodal CL checkpoint (for the fused encoder)
     PRETRAINED_MULTIMODAL_DIR: str = "/path/to/multimodal_output/best"
 
-    # Unimodal encoder checkpoints (used only if your PSMILES encoder is loaded from disk, etc.)
+    # Unimodal encoder checkpoints 
     BEST_GINE_DIR: str = "/path/to/gin_output/best"
     BEST_SCHNET_DIR: str = "/path/to/schnet_output/best"
     BEST_FP_DIR: str = "/path/to/fingerprint_mlm_output/best"
@@ -104,12 +104,11 @@ class Config:
 
 CFG = Config()
 
-# Properties to run (order preserved)
+# Properties to run
 REQUESTED_PROPERTIES = [
     "density",
     "glass transition",
     "melting",
-    "specific volume",
     "thermal decomposition",
 ]
 
@@ -156,7 +155,7 @@ WEIGHT_DECAY = 0.0
 LEARNING_RATE = 1e-4
 COSINE_ETA_MIN = 1e-6
 
-# PolyBART-style noise injection (latent space)
+# Noise injection (latent space)
 LATENT_NOISE_STD_TRAIN = 0.10  # training-time denoising std
 LATENT_NOISE_STD_GEN = 0.15    # generation-time exploration std
 N_FOLD_NOISE_SAMPLING = 16     # sampling multiplicity around each seed embedding
@@ -267,7 +266,6 @@ def make_json_serializable(obj):
 def find_property_columns(columns):
     """
     Heuristically map requested property names to dataframe columns.
-
     Notes:
       - Uses lowercase matching; prefers token-level matches.
       - Special-case: exclude "cohesive energy" when searching for "density".
@@ -279,7 +277,7 @@ def find_property_columns(columns):
         req_low = req.lower().strip()
         exact = None
 
-        # First, attempt a token match (more conservative)
+        # First, attempt a token match
         for c_low, c_orig in lowered.items():
             tokens = set(c_low.replace('_', ' ').split())
             if req_low in tokens or c_low == req_low:
@@ -1053,7 +1051,6 @@ class MultiModalCLPolymerEncoder(nn.Module):
         batch_size: int = 64,
         device: str = DEVICE,
     ) -> np.ndarray:
-        """Fast path: encode only PSMILES (no other modalities)."""
         self.eval()
         if self.psm_tok is None or self.psmiles is None or self.proj_psmiles is None:
             raise RuntimeError("PSMILES tokenizer/encoder/projection not available.")
@@ -1236,7 +1233,7 @@ class CLConditionedSelfiesTEDGenerator(nn.Module):
         self.mem_pos = nn.Embedding(self.mem_len, d_model)
 
     def build_encoder_outputs(self, z: torch.Tensor) -> Tuple[BaseModelOutput, torch.Tensor]:
-        """Create synthetic encoder outputs from a CL latent vector."""
+        """Determine encoder outputs from a CL latent vector."""
         device = z.device
         B = z.size(0)
 
@@ -1360,7 +1357,7 @@ class LatentToPSELFIESDataset(Dataset):
                 z_np = self.cl_encoder.encode_psmiles([psm], max_len=PSMILES_MAX_LEN, batch_size=1, device=DEVICE)
                 z = torch.tensor(z_np[0], dtype=torch.float32)
 
-        # Denoising noise (PolyBART-style)
+        # Denoising noise
         if self.latent_noise_std > 0:
             z = z + torch.randn_like(z) * self.latent_noise_std
             if self.renorm:
@@ -1605,7 +1602,7 @@ def oracle_predict_scaled(
 
 
 # =============================================================================
-# PolyBART-style latent property model (per property)
+# Latent property model (per property)
 # =============================================================================
 @dataclass
 class LatentPropertyModel:
@@ -1799,7 +1796,7 @@ def decode_from_latents(generator: CLConditionedSelfiesTEDGenerator, z: torch.Te
     )
 
 
-def polybart_style_generate_for_target(
+def generate_for_target(
     target_y_scaled: float,
     prop_model: LatentPropertyModel,
     cl_encoder: MultiModalCLPolymerEncoder,
@@ -1947,7 +1944,7 @@ def build_polymer_records(df: pd.DataFrame, prop_col: str) -> List[dict]:
       - preserve optional modalities for multimodal seed encoding
     """
     if not (RDKit_AVAILABLE and SELFIES_AVAILABLE):
-        raise RuntimeError("RDKit + selfies are required for this PolyBART-style pipeline.")
+        raise RuntimeError("RDKit + selfies are required for this pipeline.")
 
     recs = []
     for _, row in df.iterrows():
@@ -2241,7 +2238,7 @@ def run_inverse_design_single_property(
         per_target_records = []
 
         for y_t in ys_test_scaled:
-            out = polybart_style_generate_for_target(
+            out = generate_for_target(
                 target_y_scaled=float(y_t),
                 prop_model=prop_model,
                 cl_encoder=cl_encoder,
@@ -2425,7 +2422,7 @@ def main():
     prop_map = {req: found.get(req) for req in REQUESTED_PROPERTIES}
 
     print("\n" + "=" * 80)
-    print("[RUN] PolyBART-style inverse design (single-task per property)")
+    print("[RUN] Inverse design (single-task per property)")
     print("=" * 80)
     print(f"[ENV] RDKit_AVAILABLE={RDKit_AVAILABLE} | SELFIES_AVAILABLE={SELFIES_AVAILABLE}")
     print(f"[ENV] DEVICE={DEVICE} | USE_AMP={USE_AMP} | NUM_WORKERS={NUM_WORKERS}")

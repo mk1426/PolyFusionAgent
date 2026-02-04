@@ -344,3 +344,14 @@ cd PolyAgent
 python gradio_interface.py --server-name 0.0.0.0 --server-port 7860
 ```
 ---
+
+### Pretraining Weights / PolyAgent UI
+
+All pretrained checkpoints, tokenizers, and downstream heads are versioned in the PolyFusionAgent weights repository:
+
+- **Weights repo:** [kaurm43/polyfusionagent-weights](https://huggingface.co/kaurm43/polyfusionagent-weights)  
+- **Weights file browser:** [weights/tree/main](https://huggingface.co/kaurm43/polyfusionagent-weights/tree/main)
+
+The interactive PolyAgent interface is available as a Hugging Face Space:
+
+- **Live Space:** [kaurm43/PolyFusionAgent](https://huggingface.co/spaces/kaurm43/PolyFusionAgent)
